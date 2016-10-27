@@ -2,10 +2,12 @@
   "name": "fint-webhook-deployer",
   "version": "1.0.0",
   "description": "Lightweight idle server listening for webhook posts and reacting accordingly",
+  "repository": "https://github.com/FINTprosjektet/fint-webhook-deployer",
   "main": "index.js",
   "scripts": {
-    "debug": "set DEBUG=wh* && npm run start",
-    "start": "node index.js",
+    "preinstall": "npm prune",
+    "start": "pm2 start index.js",
+    "stop": "pm2 delete index",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [
@@ -18,8 +20,13 @@
   "license": "MIT",
   "dependencies": {
     "body-parser": "~1.15.2",
+    "chalk": "~1.1.3",
     "connect": "~3.5.0",
-    "debug": "~2.2.0",
-    "http": "0.0.0"
+    "dockerode": "~2.3.1",
+    "http": "0.0.0",
+    "pm2": "~2.0.19",
+    "q": "~1.4.1",
+    "winston": "~2.2.0",
+    "winston-daily-rotate-file": "~1.3.1"
   }
 }
