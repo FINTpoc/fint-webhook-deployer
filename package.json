@@ -1,0 +1,25 @@
+{
+  "name": "fint-webhook-deployer",
+  "version": "1.0.0",
+  "description": "Lightweight idle server listening for webhook posts and reacting accordingly",
+  "main": "index.js",
+  "scripts": {
+    "debug": "set DEBUG=wh* && npm run start",
+    "start": "node index.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "webhook",
+    "listener",
+    "docker",
+    "deploy"
+  ],
+  "author": "oystein.amundsen@bouvet.no",
+  "license": "MIT",
+  "dependencies": {
+    "body-parser": "~1.15.2",
+    "connect": "~3.5.0",
+    "debug": "~2.2.0",
+    "http": "0.0.0"
+  }
+}
