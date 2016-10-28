@@ -50,7 +50,7 @@ function setupServer() {
             logger.info(chalk.cyan('incoming webhook'), req.method, req.url, request);
 
             // Deploy and terminate
-            deploy(req.body.package, req.body.version)
+            dockerDeploy(req.body.package, req.body.version)
                 .then(function () {
                     res.end('OK\n');
                 })
@@ -67,22 +67,46 @@ function setupServer() {
 
     // create the http server and listen on port 3009
     var server = http.createServer(app);
-    server.on('error', function (err) {
-        logger.error(chalk.red('server error'), err);
-    });
-    server.listen(config.serverPort, function () {
-        logger.info(chalk.green('FINT webhook server is listening on port'), config.serverPort);
-    });
+    server.on('error', err => logger.error(chalk.red('server error'), err));
+    server.listen(config.serverPort, () => logger.info(chalk.green('FINT webhook server is listening on port'), config.serverPort));
 }
 
 /**
  * Deploy given package to docker
  * 
- * @param {any} pkgName
+ * @param {string} pkgName
+ * @param {string} version
  */
-function deploy(pkgName, version) {
-    // Stop docker
+function dockerDeploy(pkgName, version) {
     var deployCompleted = Q.defer();
+    var name = pkgName.substring(pkgName.indexOf('/') + 1);
+    Q.all([
+        dockerStop(pkgName),
+        dockerPull(pkgName, version)
+    ])
+        .then(function () {
+            logger.debug(chalk.cyan('Initializing new image!'));
+            docker.run(pkgName, undefined, undefined, { name: name }, undefined, function (err, data, container) {
+                if (err) { return deployCompleted.reject(err); }
+                logger.info(chalk.cyan('New image for ' + chalk.yellow(pkgName) + ' up and running on ' + container.Id + '!'));
+            })
+                .on('container', (data) => logger.debug('Container created'))
+                .on('stream', (data) => logger.debug('Streaming...'))
+                .on('start', (data) => logger.debug('Starting...'))
+                .on('data', (data) => logger.debug('Data'));
+            deployCompleted.resolve();
+        })
+        .catch(err => deployCompleted.reject(err));
+    return deployCompleted.promise;
+}
+
+/**
+ * Stop the docker container corresponding to the given package name
+ * 
+ * @param {string} pkgName
+ * @returns a promise which wil resove once the container is down, or reject if the container cannot be stopped.
+ */
+function dockerStop(pkgName) {
     var containerStopped = Q.defer();
     logger.debug(chalk.cyan('Stopping containers'));
     docker.listContainers(function (err, containers) {
@@ -92,23 +116,47 @@ function deploy(pkgName, version) {
             containerStopped.resolve();
         }
 
+        var imageFound = false;
         containers.forEach(function (containerInfo) {
-            //TODO: Check if we are stopping the correct container. This stops everything for now
-            docker.getContainer(containerInfo.Id).stop(function () {
-                // Container is stopped
-                logger.info(chalk.cyan('Container ' + containerInfo.Id + ' stopped!'));
-                containerStopped.resolve();
-            });
+            logger.debug('Comparing: ' + containerInfo.Image + ' - ' + pkgName);
+            if (containerInfo.Image === pkgName) {
+                imageFound = true;
+                var container = docker.getContainer(containerInfo.Id);
+                container.kill(function (err, data) {
+                    if (err) { return containerStopped.reject(err); }
+                    // Container is stopped
+                    container.remove(function (err, data) {
+                        if (err) { return containerStopped.reject(err); }
+                        // Container is removed
+                        logger.info(chalk.cyan('Container containing image ' + containerInfo.Image + ' removed!'));
+                        containerStopped.resolve();
+                    });
+                });
+            }
         });
+        if (!imageFound) {
+            logger.debug('No container found hosting ' + pkgName);
+            containerStopped.resolve();
+        }
     });
+    return containerStopped.promise;
+}
 
+/**
+ * Pulls down a docker image from a remote server
+ * 
+ * @param {string} pkgName
+ * @param {string} version
+ * @returns
+ */
+function dockerPull(pkgName, version) {
+    var imagePulled = Q.defer();
     // Download the updated package from bintray
     var binTrayAuth = {
         userName: process.env.DOCKER_USERNAME,
         password: process.env.DOCKER_PASSWORD,
         serveraddress: config.dockerRepo
     };
-    var imagePulled = Q.defer();
     logger.debug(chalk.cyan('Pulling new image for ' + chalk.yellow(pkgName) + (version ? ':' + chalk.yellow(version) : '')));
     docker.pull(pkgName + (version ? ':' + version : ''), { 'authconfig': binTrayAuth }, function (err, stream) {
         // streaming output from pull...
@@ -123,22 +171,26 @@ function deploy(pkgName, version) {
             logger.debug(event);
         }
     });
-
-    // Start docker with new image
-    Q.all([containerStopped.promise, imagePulled.promise])
-        .then(function () {
-            logger.debug(chalk.cyan('Initializing new image!'));
-            docker.run(pkgName, ['-d'], process.stdout, function (err, data, container) {
-                if (err) { return deployCompleted.reject(err); }
-                logger.info(chalk.cyan('New image for ' + chalk.yellow(pkgName) + ' up and running on ' + container.Id + '!'));
-            });
-            deployCompleted.resolve();
-        })
-        .catch(function (err) {
-            deployCompleted.reject(err);
-        });
-    return deployCompleted.promise;
+    return imagePulled.promise;
 }
+
+/**
+ * Find a image id to use when running up a new instance
+ * 
+ * @param {string} pkgName
+ * @returns a hash of the image corresponding with the given package name
+ */
+function dockerFindImage(pkgName, version) {
+    var imageFound = Q.defer();
+    docker.getImage(pkgName).inspect(function (err, imageInfo) {
+        if (err) { return imagePulled.reject(err); }
+
+        logger.debug('Image found!');
+        imageFound.resolve(imageInfo);
+    });
+    return imageFound.promise;
+}
+
 
 /**
  * Setup docker environment
@@ -183,7 +235,7 @@ function setupDocker() {
         else {
             logger.debug(chalk.cyan('Listing images currently present on host:'));
             containers.forEach(function (imageInfo, idx) {
-                logger.debug('  - ' + chalk.grey('Container #' + idx) + ' - ' + chalk.yellow(imageInfo.RepoTags));
+                logger.debug('  - ' + chalk.grey('Image #' + idx) + ' - ' + chalk.yellow(imageInfo.RepoTags));
             });
         }
     });

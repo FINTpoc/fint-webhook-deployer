@@ -29,3 +29,14 @@ npm stop
 ## PREREQUISITES ##
 
 The environment this server runs in, must have docker installed.
+
+## Configuration ##
+
+There's a `config.js` script which holds the configuration.
+
+```javascript
+module.exports = {
+    serverPort: 3009,  // The port this server should run on
+    dockerRepo: ''     // If empty, defaults to hub.docker.com. 
+}
+```
