@@ -2,9 +2,14 @@
 
 > Lightweight idle server listening for webhook posts and reacting accordingly
 
-It will listen for http action on port 3009. When we receive webhook posts to this port, the request will be analyzed and pre-configured actions will be taken.
+It will listen for http action on port 3009. When we receive webhook posts to this port, the following actions will be taken:
+ 
+ * Stop and remove a docker container using the same name as this package, if it exists.
+ * Pull down an updated image from the configured docker repo (defauts to hub.docker.com)
+ * Create a new container with the image, and boot it. 
 
-Expected posts will be in this format:
+
+Expected webhook posts will be in this format:
 ```json
 {
   "package": "my-package",
